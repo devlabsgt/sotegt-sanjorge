@@ -31,7 +31,7 @@ export const afiliadoSchema = z.object({
   sexo: z.enum(["M", "F"]),
   lugar_id: z.number().min(1, "Seleccione un lugar"),
   lider_id: z.string().uuid().nullable(),
-  politica_id: z.number().min(1, "Programa de interés es requerido"),
+  politica_id: z.number().nullable().optional(),
   sub_politica_id: z.number().nullable().optional(),
   empadronado: z.boolean().optional(),
   no_padron: z.string().min(1, "El No. de Padrón es obligatorio"),
@@ -39,6 +39,7 @@ export const afiliadoSchema = z.object({
   religion_otra: z.string().optional(),
   condicion_especial: z.string().optional().nullable(),
   familiar: z.boolean().optional().default(false),
+  beneficio_id: z.number().nullable().optional(),
 });
 
 export interface Afiliado extends AfiliadoFormData {
@@ -54,6 +55,7 @@ export interface Afiliado extends AfiliadoFormData {
   telefono3?: string | null;
   condicion_especial?: string | null;
   familiar?: boolean | null;
+  beneficio_id?: number | null;
 }
 
 export type AfiliadoFormData = z.infer<typeof afiliadoSchema>;

@@ -42,3 +42,11 @@ public/images/
 # Archivos de caché
 .cache/
 .eslintcache
+
+# Supabase Local (si usas el CLI para desarrollo local)
+supabase/.temp/
+supabase/.branches/
+supabase/db_data/
+
+# Reportes de pruebas (si implementas unit testing)
+coverage/

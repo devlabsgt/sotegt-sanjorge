@@ -7,3 +7,6 @@
 - Prefer clean, modular, and functional patterns.
 - Follow Serverless Full Stack best practices (Next.js, Supabase, Tailwind).
 - If the task is a refactor, provide only the affected code blocks.
+- Use Next.js App Router conventions and React Server Components by default. (Para evitar que la IA te sugiera código antiguo del Pages Router).
+- Use pnpm for package management commands. (Para que cuando pidas instalar una dependencia, te dé el comando exacto y no use npm).
+- Prefer TanStack Query for client-side data fetching and state management. (Para que estructure correctamente las consultas a Supabase en lugar de usar useEffect básicos).

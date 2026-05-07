@@ -21,7 +21,8 @@ export async function actualizarConfiguracionAction(
   lugar: string,
   frase: string,
   objetivo_total: number,
-  meta_por_lider: number
+  meta_por_lider: number,
+  padron: boolean = false
 ) {
   const supabase = await createClient();
 
@@ -37,6 +38,7 @@ export async function actualizarConfiguracionAction(
     frase,
     objetivo_total,
     meta_por_lider,
+    padron,
     updated_at: new Date().toISOString()
   };
 

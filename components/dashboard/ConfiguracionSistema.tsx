@@ -45,6 +45,7 @@ export default function ConfiguracionSistema({
   const [frase, setFrase] = useState("");
   const [objetivoTotal, setObjetivoTotal] = useState(0);
   const [metaPorLider, setMetaPorLider] = useState(0);
+  const [padronPrecargado, setPadronPrecargado] = useState(false);
   const [activeTab, setActiveTab] = useState<"candidato" | "metas" | "lugares">("candidato");
 
   const [initialized, setInitialized] = useState(false);
@@ -56,6 +57,7 @@ export default function ConfiguracionSistema({
     setFrase(config.frase || "");
     setObjetivoTotal(config.objetivo_total || 0);
     setMetaPorLider(config.meta_por_lider || 0);
+    setPadronPrecargado(config.padron ?? false);
     setInitialized(true);
   }
 
@@ -164,7 +166,8 @@ export default function ConfiguracionSistema({
         lugar, 
         frase, 
         objetivoTotal, 
-        metaPorLider
+        metaPorLider,
+        padronPrecargado
       );
       queryClient.invalidateQueries({ queryKey: ["config_sistema"] });
       toast.success("Configuración actualizada correctamente", {
@@ -298,6 +301,26 @@ export default function ConfiguracionSistema({
                     className="h-12 text-2xl font-black text-blue-900 border-blue-300 focus:border-blue-600 bg-white text-center"
                   />
                 </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-white rounded-xl border-2 border-blue-200">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-xs font-black text-blue-800 uppercase">Padrón Precargado</span>
+                  <span className="text-[10px] text-blue-500">Indica si el padrón electoral ya fue cargado en el sistema</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPadronPrecargado((prev) => !prev)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    padronPrecargado ? "bg-blue-600" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform ${
+                      padronPrecargado ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
               </div>
 
               {objetivoTotal > 0 && metaPorLider > 0 && (

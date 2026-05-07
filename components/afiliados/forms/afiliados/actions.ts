@@ -7,12 +7,32 @@ export async function guardarAfiliadoAction(formData: any, idEditar?: string) {
   const supabase = await createClient();
 
   if (formData.dpi) {
-    let query = supabase.from("afiliados").select("id").eq("dpi", formData.dpi);
+    let query = supabase
+      .from("afiliados")
+      .select("id, nombres, apellidos, lider_id")
+      .eq("dpi", formData.dpi);
     if (idEditar) query = query.neq("id", idEditar);
 
     const { data } = await query;
     if (data && data.length > 0) {
-      return { error: "Este DPI ya está registrado.", field: "dpi" };
+      const existente = data[0];
+      let liderNombre = "otro líder";
+      if (existente.lider_id) {
+        const { data: perfil } = await supabase
+          .from("info_perfil")
+          .select("nombres, apellidos")
+          .eq("user_id", existente.lider_id)
+          .maybeSingle();
+        if (perfil) liderNombre = `${perfil.nombres} ${perfil.apellidos}`;
+      }
+      return {
+        error: "Este DPI ya está registrado.",
+        field: "dpi",
+        dpiDuplicado: {
+          afiliadoNombre: `${existente.nombres} ${existente.apellidos}`,
+          liderNombre,
+        },
+      };
     }
   }
 

@@ -8,7 +8,7 @@ import EstadisticasTabs from "./estadisticas/EstadisticasTabs";
 import TextoAnimado from "@/components/ui/Typeanimation";
 import Image from "next/image";
 import { Dialog, TransitionChild, DialogPanel } from "@headlessui/react";
-import { Users, BarChart3, X, UserPlus, Search, Loader2 } from "lucide-react";
+import { Users, BarChart3, X, UserPlus, Search, Loader2, Heart } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { obtenerAfiliadosAction } from "./actions/afiliados";
 import { obtenerConfiguracionAction } from "../dashboard/actions/configuracion";
@@ -23,7 +23,7 @@ interface Props {
   rolUsuarioSesion: string;
 }
 
-type Vista = "miembros" | "estadisticas";
+type Vista = "miembros" | "familiares" | "estadisticas";
 
 export default function Celula({
   isOpen,
@@ -50,15 +50,12 @@ export default function Celula({
 
   if (!lider) return null;
 
-  const afiliadosFiltrados =
-    busqueda.length >= 2
-      ? afiliadosDelLider.filter(
-          (a: Afiliado) =>
-            a.nombres.toLowerCase().includes(busqueda.toLowerCase()) ||
-            a.apellidos.toLowerCase().includes(busqueda.toLowerCase()) ||
-            a.dpi.includes(busqueda),
-        )
-      : afiliadosDelLider;
+  const liderAfiliado =
+    afiliadosDelLider.find((a: Afiliado) => !!a.es_lider) ??
+    (afiliadosDelLider.length > 0 ? afiliadosDelLider[0] : null);
+  const restantesAfiliados = liderAfiliado
+    ? afiliadosDelLider.filter((a: Afiliado) => a.id !== liderAfiliado.id)
+    : afiliadosDelLider;
 
   const totalEnGrupo = afiliadosDelLider.length;
   const objetivo = config?.meta_por_lider || 0;
@@ -74,7 +71,7 @@ export default function Celula({
   } else if (totalEnGrupo === 1) {
     mensaje = `🎉 ¡Líder registrado! Añade a tus familiares y amigos.`;
   } else if (progreso <= 25) {
-    mensaje = `🌱 ¡Apenas comenzamos! Somos ${totalEnGrupo} de ${objetivo}.`;
+    mensaje = `⚡ ¡Apenas comenzamos! Somos ${totalEnGrupo} de ${objetivo}.`;
     colorBarra = "bg-blue-600";
     gifUrl = "/gif/afiliados/gif1.gif";
   } else if (progreso <= 50) {
@@ -91,9 +88,27 @@ export default function Celula({
     gifUrl = "/gif/afiliados/gif5.gif";
   }
 
+  const afiliadosSoloMiembros = restantesAfiliados.filter(
+    (a: Afiliado) => !a.familiar,
+  );
+  const afiliadosFamiliares = restantesAfiliados.filter(
+    (a: Afiliado) => !!a.familiar,
+  );
+
+  const afiliadosFiltradosMiembros =
+    busqueda.length >= 2
+      ? afiliadosSoloMiembros.filter(
+          (a: Afiliado) =>
+            a.nombres.toLowerCase().includes(busqueda.toLowerCase()) ||
+            a.apellidos.toLowerCase().includes(busqueda.toLowerCase()) ||
+            a.dpi.includes(busqueda),
+        )
+      : afiliadosSoloMiembros;
+
   const TABS = [
     { id: "miembros", label: "Miembros", icon: Users },
-    { id: "estadisticas", label: "Estadísticas Generales", icon: BarChart3 },
+    { id: "familiares", label: "Familiares", icon: Heart },
+    { id: "estadisticas", label: "Estadísticas", icon: BarChart3 },
   ];
 
   return (
@@ -115,21 +130,33 @@ export default function Celula({
           >
             <DialogPanel className="w-screen h-screen bg-white flex flex-col overflow-hidden">
               {/* HEADER */}
-              <div className="flex justify-between items-center px-2 py-3 border-b shrink-0 bg-white sticky top-0 z-20">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm md:text-xl font-bold uppercase truncate">
-                    {lider.nombres} {lider.apellidos}
-                  </h3>
-                  {isLoading && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
+              <div className="flex justify-between items-center px-3 py-2.5 border-b shrink-0 bg-white sticky top-0 z-20">
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm md:text-base font-black uppercase truncate text-gray-900 leading-tight">
+                      {lider.nombres} {lider.apellidos}
+                    </h3>
+                    {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />}
+                  </div>
+                  {liderAfiliado?.created_at && (
+                    <p className="text-[10px] text-gray-400 font-medium leading-tight mt-0.5">
+                      Afiliado el{" "}
+                      {new Date(liderAfiliado.created_at).toLocaleDateString("es-GT", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                  )}
                 </div>
 
                 <Button
                   onClick={onClose}
                   variant="ghost"
                   size="icon"
-                  className="rounded-full shrink-0 h-10 w-10 hover:bg-gray-100"
+                  className="rounded-full shrink-0 h-9 w-9 hover:bg-gray-100 ml-2"
                 >
-                  <X className="w-6 h-6 text-gray-700" />
+                  <X className="w-5 h-5 text-gray-700" />
                 </Button>
               </div>
 
@@ -245,12 +272,43 @@ export default function Celula({
 
                       <Tabla
                         lider={lider}
-                        afiliados={afiliadosFiltrados}
+                        afiliados={afiliadosFiltradosMiembros}
                         onEditar={onEditar}
                         onDataChange={onDataChange}
                         rolUsuarioSesion={rolUsuarioSesion}
                         config={config}
+                        totalEnCelula={totalEnGrupo}
                       />
+                    </>
+                  ) : vistaActual === "familiares" ? (
+                    <>
+                      <div className="flex items-center gap-2 py-3 px-1 border-b mb-3">
+                        <Heart className="w-4 h-4 text-purple-500 shrink-0" />
+                        <p className="text-xs font-bold text-gray-600 uppercase">
+                          Líder y familia —{" "}
+                          <span className="text-purple-600">
+                            {[liderAfiliado, ...afiliadosFamiliares].filter(Boolean).length} integrante
+                            {[liderAfiliado, ...afiliadosFamiliares].filter(Boolean).length !== 1 ? "s" : ""}
+                          </span>
+                        </p>
+                      </div>
+
+                      {[liderAfiliado, ...afiliadosFamiliares].filter(Boolean).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+                          <Heart className="w-10 h-10" />
+                          <p className="text-sm font-bold uppercase">Sin integrantes registrados</p>
+                        </div>
+                      ) : (
+                        <Tabla
+                          lider={lider}
+                          afiliados={[liderAfiliado, ...afiliadosFamiliares].filter(Boolean) as Afiliado[]}
+                          onEditar={onEditar}
+                          onDataChange={onDataChange}
+                          rolUsuarioSesion={rolUsuarioSesion}
+                          config={config}
+                          totalEnCelula={totalEnGrupo}
+                        />
+                      )}
                     </>
                   ) : (
                     <div className="w-full pt-4">

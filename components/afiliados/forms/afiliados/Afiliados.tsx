@@ -8,7 +8,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { toast } from "react-toastify";
 
-import { guardarAfiliadoAction, buscarDpiEnPadronAction, buscarDpiEnAfiliadosAction } from "./actions";
+import {
+  guardarAfiliadoAction,
+  buscarDpiEnPadronAction,
+  buscarDpiEnAfiliadosAction,
+} from "./actions";
 import { obtenerReligionesUnicasAction } from "../../actions/afiliados";
 import { type AfiliadoFormData, type Afiliado } from "./schemas";
 import {
@@ -22,10 +26,15 @@ import {
   obtenerSubPoliticasAction,
   crearSubPoliticaAction,
   obtenerLugaresAction,
+  obtenerBeneficiosAction,
+  crearBeneficioAction,
   type Politica,
   type SubPolitica,
   type Lugar,
+  type Beneficio,
 } from "./catalogos";
+import { useQuery } from "@tanstack/react-query";
+import { obtenerConfiguracionAction } from "@/components/dashboard/actions/configuracion";
 
 type LiderType = {
   id: string;
@@ -79,7 +88,8 @@ function ComboSearch({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -88,26 +98,27 @@ function ComboSearch({
   const filtered = items.filter((i: any) => {
     const queryLower = query.toLowerCase().trim();
     if (i.nombre.toLowerCase().includes(queryLower)) return true;
-    
+
     if (groupKey) {
       const baseGroup = i[groupKey] ? String(i[groupKey]).toLowerCase() : "";
       if (baseGroup.includes(queryLower)) return true;
-      
+
       const id = i.sector_id || 0;
-      
+
       // Prevenir que "sector 1" coincida con "sector 11"
       const matchSector = queryLower.match(/^sector\s+(\d+)$/);
       if (matchSector) {
         if (id === parseInt(matchSector[1], 10)) return true;
       } else {
-        const formattedGroup = id === 0 ? baseGroup : `sector ${id}: ${baseGroup}`.toLowerCase();
+        const formattedGroup =
+          id === 0 ? baseGroup : `sector ${id}: ${baseGroup}`.toLowerCase();
         if (formattedGroup.includes(queryLower)) return true;
       }
     }
     return false;
   });
   const exactMatch = items.find(
-    (i) => i.nombre.toLowerCase() === query.trim().toLowerCase()
+    (i) => i.nombre.toLowerCase() === query.trim().toLowerCase(),
   );
   const canCreate = onCreateNew && query.trim().length > 1 && !exactMatch;
 
@@ -128,7 +139,7 @@ function ComboSearch({
       const baseName = item[groupKey] || "Sin Clasificar";
       const id = item.sector_id || 0;
       const group = id === 0 ? baseName : `Sector ${id}: ${baseName}`;
-      
+
       if (!map[group]) map[group] = [];
       map[group].push(item);
       sectorIdMap[group] = id;
@@ -192,7 +203,9 @@ function ComboSearch({
                         }}
                       >
                         {item.nombre}
-                        {value === item.id && <Check className="w-3 h-3 text-blue-600" />}
+                        {value === item.id && (
+                          <Check className="w-3 h-3 text-blue-600" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -209,7 +222,9 @@ function ComboSearch({
                     }}
                   >
                     {item.nombre}
-                    {value === item.id && <Check className="w-3 h-3 text-blue-600" />}
+                    {value === item.id && (
+                      <Check className="w-3 h-3 text-blue-600" />
+                    )}
                   </button>
                 ))}
             {canCreate && (
@@ -248,8 +263,16 @@ export default function AfiliadosForm({
   const { rol_id } = useUserData();
   const esAdmin = rol_id === 1 || rol_id === 2;
 
+  const { data: configSis } = useQuery({
+    queryKey: ["config_sistema"],
+    queryFn: () => obtenerConfiguracionAction(),
+  });
+  const padronHabilitado = configSis?.padron === true;
+
   const isEditMode = !!afiliadoAEditar;
-  const [step, setStep] = useState(isEditMode || isFirstMember ? 2 : 1);
+  const [step, setStep] = useState(
+    isEditMode || isFirstMember || !padronHabilitado ? 2 : 1,
+  );
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [mostrandoNuevaReligion, setMostrandoNuevaReligion] = useState(false);
   const [mostrandoNuevoSub, setMostrandoNuevoSub] = useState(false);
@@ -258,9 +281,20 @@ export default function AfiliadosForm({
   const [subPoliticas, setSubPoliticas] = useState<SubPolitica[]>([]);
   const [lugares, setLugares] = useState<Lugar[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
-  const [politicaSeleccionada, setPoliticaSeleccionada] = useState<number | null>(null);
-  const [subPoliticaSeleccionada, setSubPoliticaSeleccionada] = useState<number | null>(null);
+  const [politicaSeleccionada, setPoliticaSeleccionada] = useState<
+    number | null
+  >(null);
+  const [subPoliticaSeleccionada, setSubPoliticaSeleccionada] = useState<
+    number | null
+  >(null);
   const [lugarSeleccionado, setLugarSeleccionado] = useState<number>(0);
+  const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
+  const [beneficioSeleccionado, setBeneficioSeleccionado] = useState<
+    number | null
+  >(null);
+  const [mostrandoNuevoBeneficio, setMostrandoNuevoBeneficio] = useState(false);
+  const [nuevoBeneficioNombre, setNuevoBeneficioNombre] = useState("");
+  const [creandoBeneficio, setCreandoBeneficio] = useState(false);
 
   const form = useAfiliadosForm();
   const {
@@ -278,45 +312,60 @@ export default function AfiliadosForm({
   const familiarActual = watch("familiar");
   const buscador = useBuscadorLider(lideres, setValue);
   const [buscandoDpi, setBuscandoDpi] = useState(false);
-  const [padronStatus, setPadronStatus] = useState<"none" | "found" | "not_found">("none");
-  const [yaRegistrado, setYaRegistrado] = useState<{ afiliadoNombre: string; liderNombre: string } | null>(null);
+  const [padronStatus, setPadronStatus] = useState<
+    "none" | "found" | "not_found"
+  >("none");
+  const [yaRegistrado, setYaRegistrado] = useState<{
+    afiliadoNombre: string;
+    liderNombre: string;
+  } | null>(null);
 
   const [religionesRemotas, setReligionesRemotas] = useState<string[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      obtenerReligionesUnicasAction().then(res => setReligionesRemotas(res));
+      obtenerReligionesUnicasAction().then((res) => setReligionesRemotas(res));
     }
   }, [isOpen]);
 
   // Extraer las religiones existentes (omitir Católico y Evangélico que ya son fijas)
   const religionesExistentes = Array.from(
-    new Set([...(afiliados || []).map((a) => a.religion), ...religionesRemotas].filter(Boolean))
+    new Set(
+      [
+        ...(afiliados || []).map((a) => a.religion),
+        ...religionesRemotas,
+      ].filter(Boolean),
+    ),
   ).filter((r) => r !== "Católico" && r !== "Evangélico");
-  
-  const esReligionCustom = religionActual && !["Católico", "Evangélico", ...religionesExistentes].includes(religionActual);
+
+  const esReligionCustom =
+    religionActual &&
+    !["Católico", "Evangélico", ...religionesExistentes].includes(
+      religionActual,
+    );
 
   const handleVerificarDpi = async () => {
     const dpiLimpio = dpiActual?.replace(/\s/g, "");
     if (dpiActual !== dpiLimpio) setValue("dpi", dpiLimpio || "");
-    
+
     if (!dpiLimpio || dpiLimpio.length !== 13) {
       setError("dpi", { type: "manual", message: "Ingrese 13 dígitos válidos" });
       return;
     }
-    
+
     setBuscandoDpi(true);
     setYaRegistrado(null);
 
-    // Primero verificar si ya está en el sistema de afiliados
     const enSistema = await buscarDpiEnAfiliadosAction(dpiLimpio);
     if (enSistema?.yaRegistrado) {
-      setYaRegistrado({ afiliadoNombre: enSistema.afiliadoNombre, liderNombre: enSistema.liderNombre });
+      setYaRegistrado({
+        afiliadoNombre: enSistema.afiliadoNombre,
+        liderNombre: enSistema.liderNombre,
+      });
       setBuscandoDpi(false);
       return;
     }
 
-    // Luego buscar en el padrón TSE
     const res = await buscarDpiEnPadronAction(dpiLimpio);
     if (res && res.encontrado) {
       setValue("nombres", res.nombres);
@@ -335,11 +384,11 @@ export default function AfiliadosForm({
   };
 
   useEffect(() => {
-    if (isEditMode || isFirstMember) setStep(2);
+    if (isEditMode || isFirstMember || !padronHabilitado) setStep(2);
     else setStep(1);
     setPadronStatus("none");
     setYaRegistrado(null);
-  }, [isOpen, isEditMode, isFirstMember]);
+  }, [isOpen, isEditMode, isFirstMember, padronHabilitado]);
 
   useInicializarFormulario(
     isOpen,
@@ -358,17 +407,21 @@ export default function AfiliadosForm({
       if (isEditMode) setIsLoadingData(true);
       Promise.all([
         obtenerPoliticasAction(),
-        obtenerLugaresAction()
-      ]).then(async ([p, l]) => {
+        obtenerLugaresAction(),
+        obtenerBeneficiosAction(),
+      ]).then(async ([p, l, b]) => {
         setPoliticas(p);
         setLugares(l);
+        setBeneficios(b);
         if (afiliadoAEditar) {
           const pid = (afiliadoAEditar as any).politica_id || null;
           const spid = (afiliadoAEditar as any).sub_politica_id || null;
           const lid = afiliadoAEditar.lugar_id || 0;
+          const bid = (afiliadoAEditar as any).beneficio_id || null;
           setPoliticaSeleccionada(pid);
           setSubPoliticaSeleccionada(spid);
           setLugarSeleccionado(lid);
+          setBeneficioSeleccionado(bid);
           if (pid) {
             const subs = await obtenerSubPoliticasAction(pid);
             setSubPoliticas(subs);
@@ -378,6 +431,7 @@ export default function AfiliadosForm({
           setSubPoliticaSeleccionada(null);
           setSubPoliticas([]);
           setLugarSeleccionado(0);
+          setBeneficioSeleccionado(null);
         }
         setIsLoadingData(false);
       });
@@ -410,24 +464,45 @@ export default function AfiliadosForm({
     if (!politicaSeleccionada) return;
     const nueva = await crearSubPoliticaAction(politicaSeleccionada, nombre);
     if (nueva) {
-      setSubPoliticas((prev) => [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setSubPoliticas((prev) =>
+        [...prev, nueva].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      );
       setSubPoliticaSeleccionada(nueva.id);
       setValue("sub_politica_id" as any, nueva.id);
       toast.success("Subpolítica creada");
     }
   };
 
-
+  const handleCrearBeneficio = async () => {
+    if (!nuevoBeneficioNombre.trim()) return;
+    setCreandoBeneficio(true);
+    const nuevo = await crearBeneficioAction(nuevoBeneficioNombre.trim());
+    if (nuevo) {
+      setBeneficios((prev) =>
+        [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      );
+      setBeneficioSeleccionado(nuevo.id);
+      setValue("beneficio_id" as any, nuevo.id);
+      setMostrandoNuevoBeneficio(false);
+      setNuevoBeneficioNombre("");
+      toast.success("Beneficio creado");
+    } else {
+      toast.error("Error al crear el beneficio");
+    }
+    setCreandoBeneficio(false);
+  };
 
   const onSubmit = async (formData: any) => {
     const datosProcesados = {
       ...formData,
       lugar_id: lugarSeleccionado,
-      politica_id: politicaSeleccionada,
-      sub_politica_id: subPoliticaSeleccionada,
+      politica_id: null,
+      sub_politica_id: null,
+      beneficio_id: beneficioSeleccionado,
       religion: mostrandoNuevaReligion
         ? formData.religion_otra
         : formData.religion,
+      ...(isFirstMember && !afiliadoAEditar ? { es_lider: true } : {}),
     };
     delete (datosProcesados as any).religion_otra;
 
@@ -436,13 +511,20 @@ export default function AfiliadosForm({
       afiliadoAEditar?.id,
     );
     if (res?.error) {
-      if (res.field)
+      if (res.field) {
         setError(res.field as any, { type: "manual", message: res.error });
-      else toast.error(`Error: ${res.error}`);
+        if ((res as any).dpiDuplicado) {
+          setYaRegistrado((res as any).dpiDuplicado);
+        }
+      } else {
+        toast.error(`Error: ${res.error}`);
+      }
       return;
     }
 
-    toast.success(`Afiliado ${isEditMode ? "actualizado" : "creado"} correctamente.`);
+    toast.success(
+      `Afiliado ${isEditMode ? "actualizado" : "creado"} correctamente.`,
+    );
     setMostrandoNuevaReligion(false);
     onSave();
     onClose();
@@ -453,13 +535,17 @@ export default function AfiliadosForm({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 font-sans">
       <motion.div
-        className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg shadow-xl w-full max-w-lg md:max-w-3xl p-6 max-h-[90vh] overflow-y-auto"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
       >
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold uppercase">
-            {isEditMode ? "Editar Afiliado" : step === 1 ? "Verificar DPI" : "Completar Datos"}
+            {isEditMode
+              ? "Editar Afiliado"
+              : step === 1
+                ? "Verificar DPI"
+                : "Completar Datos"}
           </h2>
           <Button size="icon" variant="ghost" onClick={onClose}>
             <X className="h-5 w-5" />
@@ -473,100 +559,101 @@ export default function AfiliadosForm({
               animate={{ opacity: 1, x: 0 }}
               className="space-y-6 flex flex-col py-8"
             >
-              {yaRegistrado ? (
-                <div className="p-4 rounded-xl flex flex-col gap-2 border-2 border-red-300 bg-red-50 text-red-800 text-center animate-in zoom-in-95">
-                  <X className="w-10 h-10 text-red-500 mx-auto" />
-                  <p className="text-sm font-black uppercase">¡DPI YA REGISTRADO!</p>
-                  <p className="text-base font-bold">{yaRegistrado.afiliadoNombre}</p>
-                  <p className="text-xs text-red-600 font-medium pb-2 border-b border-red-200">
-                    Célula del líder:<br/>
-                    <span className="font-black text-sm">{yaRegistrado.liderNombre}</span>
+              <div className="text-center space-y-2">
+                <Image
+                  src="/gif/afiliados/gif0.gif"
+                  alt="Animación"
+                  width={60}
+                  height={60}
+                  unoptimized
+                  className="mx-auto"
+                />
+                <p className="text-sm font-bold text-gray-500 uppercase">
+                  Ingrese el DPI para buscar en el sistema de afiliación TSE
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Input
+                  {...register("dpi")}
+                  placeholder="DPI (13 dígitos sin espacios)"
+                  disabled={buscandoDpi}
+                  className="h-14 text-center text-xl font-bold tracking-widest placeholder:tracking-normal"
+                  maxLength={13}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleVerificarDpi();
+                    }
+                  }}
+                />
+                {errors.dpi && (
+                  <p className="text-xs text-red-500 text-center font-bold">
+                    {errors.dpi.message}
+                  </p>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                onClick={handleVerificarDpi}
+                disabled={buscandoDpi || !dpiActual || dpiActual.length < 13}
+                className="w-full bg-blue-600 hover:bg-blue-700 h-12 font-bold uppercase"
+              >
+                {buscandoDpi ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Buscando...
+                  </>
+                ) : (
+                  "Continuar"
+                )}
+              </Button>
+
+              {yaRegistrado && (
+                <div className="flex flex-col gap-1.5 p-3 rounded-lg border-2 border-red-300 bg-red-50 text-red-800 text-center">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                    <p className="text-xs font-black uppercase">¡DPI ya registrado!</p>
+                  </div>
+                  <p className="text-sm font-bold">{yaRegistrado.afiliadoNombre}</p>
+                  <p className="text-[11px] text-red-600">
+                    Célula del líder:{" "}
+                    <span className="font-black">{yaRegistrado.liderNombre}</span>
                   </p>
                   <Button
                     type="button"
-                    onClick={() => {
-                        setYaRegistrado(null);
-                        setValue("dpi", "");
-                    }}
-                    className="mt-2 text-xs font-bold uppercase bg-red-600 hover:bg-red-700 w-full"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setYaRegistrado(null); setValue("dpi", ""); }}
+                    className="mt-1 text-[10px] font-bold uppercase text-red-600 hover:text-red-700 hover:bg-red-100"
                   >
-                    Aceptar
+                    Limpiar DPI
                   </Button>
                 </div>
-              ) : (
-                <>
-                  <div className="text-center space-y-2">
-                    <Image
-                      src="/gif/afiliados/gif0.gif"
-                      alt="Animación"
-                      width={60}
-                      height={60}
-                      unoptimized
-                      className="mx-auto"
-                    />
-                    <p className="text-sm font-bold text-gray-500 uppercase">
-                      Ingrese el DPI para buscar en el sistema de afiliación TSE
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Input
-                      {...register("dpi")}
-                      placeholder="DPI (13 dígitos sin espacios)"
-                      disabled={buscandoDpi}
-                      className="h-14 text-center text-xl font-bold tracking-widest placeholder:tracking-normal"
-                      maxLength={13}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleVerificarDpi();
-                        }
-                      }}
-                    />
-                    {errors.dpi && (
-                      <p className="text-xs text-red-500 text-center font-bold">{errors.dpi.message}</p>
-                    )}
-                  </div>
-
-                  <Button
-                    type="button"
-                    onClick={handleVerificarDpi}
-                    disabled={buscandoDpi || !dpiActual || dpiActual.length < 13}
-                    className="w-full bg-blue-600 hover:bg-blue-700 h-12 font-bold uppercase"
-                  >
-                    {buscandoDpi ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Buscando...
-                      </>
-                    ) : (
-                      "Continuar"
-                    )}
-                  </Button>
-                </>
               )}
             </motion.div>
           ) : isLoadingData ? (
             <div className="space-y-4 animate-pulse pt-4">
               <div className="flex gap-4">
-                 <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
-                 <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
+                <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
+                <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
               </div>
               <div className="flex gap-4">
-                 <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
-                 <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
+                <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
+                <div className="h-10 bg-gray-100 rounded-md flex-1"></div>
               </div>
               <div className="h-10 bg-gray-100 rounded-md w-full"></div>
               <div className="h-10 bg-gray-100 rounded-md w-full"></div>
               <div className="h-10 bg-gray-100 rounded-md w-full"></div>
               <div className="h-10 bg-gray-100 rounded-md w-full"></div>
-              
+
               <div className="flex justify-between mt-6 border-t pt-4">
-                 <div className="h-10 bg-gray-100 rounded-md w-24"></div>
-                 <div className="flex gap-2">
-                   <div className="h-10 bg-gray-100 rounded-md w-24"></div>
-                   <div className="h-10 bg-gray-200 rounded-md w-24"></div>
-                 </div>
+                <div className="h-10 bg-gray-100 rounded-md w-24"></div>
+                <div className="flex gap-2">
+                  <div className="h-10 bg-gray-100 rounded-md w-24"></div>
+                  <div className="h-10 bg-gray-200 rounded-md w-24"></div>
+                </div>
               </div>
             </div>
           ) : (
@@ -576,311 +663,362 @@ export default function AfiliadosForm({
               className="space-y-4"
             >
               {/* STATUS BANNER TSE */}
-              {!isEditMode && padronStatus !== "none" && !yaRegistrado && (
-                <div className={`p-3 rounded-lg flex items-center gap-2 border text-xs font-bold uppercase ${
-                  padronStatus === "found" 
-                  ? "bg-green-50 border-green-200 text-green-700"
-                  : "bg-orange-50 border-orange-200 text-orange-700"
-                }`}>
-                  {padronStatus === "found" ? (
-                    <><Check className="w-4 h-4" /> AFILIADO EN PADRÓN TSE ENCONTRADO - Datos prellenados</>
-                  ) : (
-                    <><X className="w-4 h-4" /> NO ENCONTRADO EN PADRÓN - Por favor llene todos los campos</>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-600 uppercase">Nombres</label>
-                  <Input
-                    {...register("nombres")}
-                    placeholder="Nombres"
-                  />
-                  {errors.nombres && <p className="text-[10px] text-red-500">{errors.nombres.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-600 uppercase">Apellidos</label>
-                  <Input
-                    {...register("apellidos")}
-                    placeholder="Apellidos"
-                  />
-                  {errors.apellidos && <p className="text-[10px] text-red-500">{errors.apellidos.message}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-green-600 uppercase">Teléfono (Whatsapp)</label>
-                  <Input {...register("telefono")} placeholder="Teléfono" type="tel" inputMode="numeric" />
-                  {errors.telefono && <p className="text-[10px] text-red-500">{errors.telefono.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-600 uppercase">DPI</label>
-                  <div className="relative">
-                    <Input {...register("dpi")} placeholder="DPI" readOnly={!isEditMode && !isFirstMember} className={!isEditMode && !isFirstMember ? "bg-gray-100" : ""} />
-                    {padronStatus === "found" && !isEditMode && <Check className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />}
-                  </div>
-                  {errors.dpi && <p className="text-[10px] text-red-500">{errors.dpi.message}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Teléfono 2 (Opcional)</label>
-                  <Input {...register("telefono2")} placeholder="Teléfono alternativo" type="tel" inputMode="numeric" />
-                  {errors.telefono2 && <p className="text-[10px] text-red-500">{errors.telefono2.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Teléfono 3 (Opcional)</label>
-                  <Input {...register("telefono3")} placeholder="Teléfono alternativo" type="tel" inputMode="numeric" />
-                  {errors.telefono3 && <p className="text-[10px] text-red-500">{errors.telefono3.message}</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 items-end">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-600 uppercase block leading-none">
-                    Nacimiento
-                  </label>
-                  <Input
-                    type="date"
-                    {...register("nacimiento")}
-                    className="h-9 text-xs"
-                  />
-                  {errors.nacimiento && <p className="text-[10px] text-red-500">{errors.nacimiento.message}</p>}
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-blue-600 uppercase block leading-none">
-                    Sexo
-                  </label>
-                  <div className="flex rounded-md border p-1 bg-gray-50 h-9">
-                    <button
-                      type="button"
-                      onClick={() => setValue("sexo", "M")}
-                      className={`flex-1 rounded text-[10px] font-black transition-all ${sexoActual === "M" ? "bg-blue-600 text-white shadow-sm" : "text-gray-400 hover:bg-gray-200"}`}
-                    >
-                      M
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setValue("sexo", "F")}
-                      className={`flex-1 rounded text-[10px] font-black transition-all ${sexoActual === "F" ? "bg-pink-600 text-white shadow-sm" : "text-gray-400 hover:bg-gray-200"}`}
-                    >
-                      F
-                    </button>
-                  </div>
-                  {errors.sexo && <p className="text-[10px] text-red-500">{errors.sexo.message}</p>}
-                </div>
-              </div>
-
-              {/* LUGAR */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-blue-600 uppercase block">
-                  Lugar
-                </label>
-                <ComboSearch
-                  placeholder="Seleccione un lugar..."
-                  items={lugares}
-                  value={lugarSeleccionado || null}
-                  onSelect={(id) => {
-                    setLugarSeleccionado(id);
-                    setValue("lugar_id", id);
-                  }}
-                  groupKey="sector_nombre"
-                />
-                {errors.lugar_id && (
-                  <p className="text-[10px] text-red-500">{errors.lugar_id.message}</p>
-                )}
-                <p className="text-base font-semibold text-blue-500">
-                  Si el lugar no aparece, comunícate con administración.
-                </p>
-              </div>
-
-              {/* POLÍTICA PRINCIPAL */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-purple-600 uppercase block">
-                  Programa de Interés
-                </label>
-                <select
-                  value={politicaSeleccionada ?? ""}
-                  onChange={(e) => handlePoliticaChange(Number(e.target.value))}
-                  className="w-full h-10 px-3 border rounded-md text-sm bg-white"
-                >
-                  <option value="">Seleccione programa...</option>
-                  {politicas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errors.politica_id && <p className="text-[10px] text-red-500">{errors.politica_id.message}</p>}
-              </div>
-
-              {/* SUBPOLÍTICA */}
-              <AnimatePresence>
-                {politicaSeleccionada && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="space-y-1 overflow-hidden"
+              {padronHabilitado &&
+                !isEditMode &&
+                padronStatus !== "none" &&
+                !yaRegistrado && (
+                  <div
+                    className={`p-3 rounded-lg flex items-center gap-2 border text-xs font-bold uppercase ${
+                      padronStatus === "found"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : "bg-orange-50 border-orange-200 text-orange-700"
+                    }`}
                   >
-                    <label className="text-[10px] font-bold text-purple-600 uppercase block">
-                      Sub-programa
-                    </label>
-                    <div className="flex gap-2">
-                      {!mostrandoNuevoSub ? (
-                        <>
-                          <select
-                            value={subPoliticaSeleccionada ?? ""}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setSubPoliticaSeleccionada(val || null);
-                              setValue("sub_politica_id" as any, val || null);
-                            }}
-                            disabled={loadingSubs}
-                            className="flex-1 h-10 px-3 border rounded-md text-sm bg-white disabled:opacity-50"
-                          >
-                            <option value="">Seleccione sub-programa...</option>
-                            {subPoliticas.map((sp) => (
-                              <option key={sp.id} value={sp.id}>
-                                {sp.nombre}
-                              </option>
-                            ))}
-                          </select>
-                          {esAdmin && (
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="outline"
-                              className="shrink-0 border-blue-200 text-blue-600 h-10 w-10"
-                              onClick={() => setMostrandoNuevoSub(true)}
-                            >
-                              <Plus className="w-5 h-5" />
-                            </Button>
-                          )}
-                        </>
-                      ) : (
-                        <div className="flex gap-2 w-full">
-                          <Input
-                            placeholder="Nombre del nuevo sub-programa..."
-                            className="flex-1"
-                            autoFocus
-                            onKeyDown={async (e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                await handleCrearSubPolitica(e.currentTarget.value);
-                                setMostrandoNuevoSub(false);
-                              }
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="shrink-0 text-red-500 h-10 w-10"
-                            onClick={() => setMostrandoNuevoSub(false)}
-                          >
-                            <X className="w-5 h-5" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
+                    {padronStatus === "found" ? (
+                      <>
+                        <Check className="w-4 h-4" /> AFILIADO EN PADRÓN TSE
+                        ENCONTRADO - Datos prellenados
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-4 h-4" /> NO ENCONTRADO EN PADRÓN - Por
+                        favor llene todos los campos
+                      </>
+                    )}
+                  </div>
                 )}
-              </AnimatePresence>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full text-blue-600 border-blue-200 text-[10px] font-bold uppercase h-10 shadow-sm"
-                onClick={() =>
-                  window.open(
-                    "https://tse.org.gt/reg-ciudadanos/sistema-de-estadisticas/consulta-de-afiliacion",
-                    "_blank",
-                  )
-                }
-              >
-                Verificar No. de Padron en TSE
-              </Button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* COLUMNA IZQUIERDA: DPI → Religión */}
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-600 uppercase">DPI</label>
+                    <div className="relative">
+                      <Input {...register("dpi")} placeholder="DPI" readOnly={!isEditMode && !isFirstMember && padronHabilitado} className={!isEditMode && !isFirstMember && padronHabilitado ? "bg-gray-100" : ""} />
+                      {padronHabilitado && padronStatus === "found" && !isEditMode && <Check className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />}
+                    </div>
+                    {errors.dpi && !yaRegistrado && <p className="text-[10px] text-red-500">{errors.dpi.message}</p>}
+                    {yaRegistrado && (
+                      <div className="flex flex-col gap-1 p-2.5 rounded-lg border-2 border-red-300 bg-red-50 text-red-800 text-center mt-1">
+                        <div className="flex items-center justify-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                          <p className="text-[10px] font-black uppercase">¡DPI ya registrado!</p>
+                        </div>
+                        <p className="text-xs font-bold">{yaRegistrado.afiliadoNombre}</p>
+                        <p className="text-[10px] text-red-600">
+                          Líder: <span className="font-black">{yaRegistrado.liderNombre}</span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
-              <div className="grid grid-cols-5 gap-4 items-end">
-                <div className="col-span-2 space-y-1">
-                  <label className="text-[10px] font-bold text-orange-600 uppercase">
-                    No. Padrón
-                  </label>
-                  <Input {...register("no_padron")} placeholder="No. Padrón" />
-                  {errors.no_padron && <p className="text-[10px] text-red-500">{errors.no_padron.message}</p>}
-                </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase">Nombres</label>
+                      <Input {...register("nombres")} placeholder="Nombres" />
+                      {errors.nombres && <p className="text-[10px] text-red-500">{errors.nombres.message}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase">Apellidos</label>
+                      <Input {...register("apellidos")} placeholder="Apellidos" />
+                      {errors.apellidos && <p className="text-[10px] text-red-500">{errors.apellidos.message}</p>}
+                    </div>
+                  </div>
 
-                <div className="col-span-3 flex flex-col space-y-1">
-                  <label className="text-[10px] font-bold text-orange-600 uppercase">
-                    Religión
-                  </label>
-                  <div className="flex gap-2 h-10">
-                    {!mostrandoNuevaReligion ? (
-                      <div className="flex-1 flex flex-col">
-                        <div className="flex gap-2 w-full">
-                          <select
-                            {...register("religion")}
-                            className="flex-1 px-3 border rounded-md text-sm bg-white"
-                          >
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-green-600 uppercase">Teléfono (Whatsapp)</label>
+                    <Input {...register("telefono")} placeholder="Teléfono" type="tel" inputMode="numeric" />
+                    {errors.telefono && <p className="text-[10px] text-red-500">{errors.telefono.message}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Teléfono 2 (Opcional)</label>
+                    <Input {...register("telefono2")} placeholder="Teléfono alternativo" type="tel" inputMode="numeric" />
+                    {errors.telefono2 && <p className="text-[10px] text-red-500">{errors.telefono2.message}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Teléfono 3 (Opcional)</label>
+                    <Input {...register("telefono3")} placeholder="Teléfono alternativo" type="tel" inputMode="numeric" />
+                    {errors.telefono3 && <p className="text-[10px] text-red-500">{errors.telefono3.message}</p>}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase block leading-none">Nacimiento</label>
+                      <Input type="date" {...register("nacimiento")} className="h-9 text-xs" />
+                      {errors.nacimiento && <p className="text-[10px] text-red-500">{errors.nacimiento.message}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase block leading-none">Sexo</label>
+                      <div className="flex rounded-md border p-1 bg-gray-50 h-9">
+                        <button type="button" onClick={() => setValue("sexo", "M")} className={`flex-1 rounded text-[10px] font-black transition-all ${sexoActual === "M" ? "bg-blue-600 text-white shadow-sm" : "text-gray-400 hover:bg-gray-200"}`}>M</button>
+                        <button type="button" onClick={() => setValue("sexo", "F")} className={`flex-1 rounded text-[10px] font-black transition-all ${sexoActual === "F" ? "bg-pink-600 text-white shadow-sm" : "text-gray-400 hover:bg-gray-200"}`}>F</button>
+                      </div>
+                      {errors.sexo && <p className="text-[10px] text-red-500">{errors.sexo.message}</p>}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-purple-600 uppercase">Religión</label>
+                    <div className="flex gap-1 h-10">
+                      {!mostrandoNuevaReligion ? (
+                        <>
+                          <select {...register("religion")} className="flex-1 px-3 border rounded-md text-sm bg-white">
                             <option value="">Seleccione...</option>
                             <option value="Católico">Católico</option>
                             <option value="Evangélico">Evangélico</option>
-                            {religionesExistentes.map((r) => (
-                              <option key={r as string} value={r as string}>
-                                {r as string}
-                              </option>
-                            ))}
-                            {esReligionCustom && (
-                              <option value={religionActual}>{religionActual}</option>
-                            )}
+                            {religionesExistentes.map((r) => (<option key={r as string} value={r as string}>{r as string}</option>))}
+                            {esReligionCustom && (<option value={religionActual}>{religionActual}</option>)}
                           </select>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="shrink-0 border-green-200 text-green-600 h-10 w-10"
-                            onClick={() => setMostrandoNuevaReligion(true)}
-                          >
-                            <Plus className="w-5 h-5" />
-                          </Button>
+                          <Button type="button" size="icon" variant="outline" className="shrink-0 border-green-200 text-green-600 h-10 w-10" onClick={() => setMostrandoNuevaReligion(true)}><Plus className="w-5 h-5" /></Button>
+                        </>
+                      ) : (
+                        <>
+                          <Input {...register("religion_otra")} placeholder="Religión..." className="flex-1 px-2" autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = form.getValues("religion_otra"); if (v) { setValue("religion", v); setMostrandoNuevaReligion(false); } } }} />
+                          <Button type="button" size="icon" variant="ghost" className="shrink-0 text-green-600 bg-green-50 hover:bg-green-100 h-10 w-10" onClick={() => { const v = form.getValues("religion_otra"); if (v) { setValue("religion", v); setMostrandoNuevaReligion(false); } }}><Check className="w-4 h-4" /></Button>
+                          <Button type="button" size="icon" variant="ghost" className="shrink-0 text-red-500 bg-red-50 hover:bg-red-100 h-10 w-10" onClick={() => { setMostrandoNuevaReligion(false); setValue("religion_otra", ""); }}><X className="w-4 h-4" /></Button>
+                        </>
+                      )}
+                    </div>
+                    {errors.religion && !mostrandoNuevaReligion && <p className="text-[10px] text-red-500">{errors.religion.message}</p>}
+                  </div>
+                </div>
+
+                {/* COLUMNA DERECHA: Lugar → Condición Especial */}
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-blue-600 uppercase block">
+                      Lugar
+                    </label>
+                    <select
+                      value={lugarSeleccionado || ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value);
+                        setLugarSeleccionado(id);
+                        setValue("lugar_id", id);
+                      }}
+                      className="w-full h-10 px-3 border rounded-md text-sm bg-white"
+                    >
+                      <option value="">Seleccione un lugar...</option>
+                      {Object.entries(
+                        lugares.reduce<Record<string, typeof lugares>>(
+                          (acc, l) => {
+                            const grupo = l.sector_nombre ?? "Sin Sector";
+                            if (!acc[grupo]) acc[grupo] = [];
+                            acc[grupo].push(l);
+                            return acc;
+                          },
+                          {},
+                        ),
+                      ).map(([sector, items]) => (
+                        <optgroup key={sector} label={sector}>
+                          {items.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.nombre}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {errors.lugar_id && (
+                      <p className="text-[10px] text-red-500">
+                        {errors.lugar_id.message}
+                      </p>
+                    )}
+                    <p className="text-[10px] font-semibold text-blue-500">
+                      Si el lugar no aparece, comunícate con administración.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-3 items-end">
+                    <div className="space-y-1 w-3/4">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase">
+                        No. Padrón
+                      </label>
+                      <Input
+                        {...register("no_padron")}
+                        placeholder="No. Padrón"
+                      />
+                      {errors.no_padron && (
+                        <p className="text-[10px] text-red-500">
+                          {errors.no_padron.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1 w-1/4">
+                      <label className="text-[10px] font-bold text-blue-600 uppercase opacity-0 select-none">
+                        TSE
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full text-blue-600 border-blue-200 text-[10px] font-bold uppercase h-10 shadow-sm"
+                        onClick={() =>
+                          window.open(
+                            "https://tse.org.gt/reg-ciudadanos/sistema-de-estadisticas/consulta-de-afiliacion",
+                            "_blank",
+                          )
+                        }
+                      >
+                        Ver. TSE
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="hidden">
+                    <label className="text-[10px] font-bold text-blue-600 uppercase block">
+                      Programa de Interés
+                    </label>
+                    <select
+                      value={politicaSeleccionada ?? ""}
+                      onChange={(e) =>
+                        handlePoliticaChange(Number(e.target.value))
+                      }
+                      className="w-full h-10 px-3 border rounded-md text-sm bg-white"
+                    >
+                      <option value="">Seleccione programa...</option>
+                      {politicas.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="hidden">
+                    {politicaSeleccionada && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-purple-600 uppercase block">
+                          Sub-programa
+                        </label>
+                        <div className="flex gap-2">
+                          {!mostrandoNuevoSub ? (
+                            <>
+                              <select
+                                value={subPoliticaSeleccionada ?? ""}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  setSubPoliticaSeleccionada(val || null);
+                                  setValue(
+                                    "sub_politica_id" as any,
+                                    val || null,
+                                  );
+                                }}
+                                disabled={loadingSubs}
+                                className="flex-1 h-10 px-3 border rounded-md text-sm bg-white disabled:opacity-50"
+                              >
+                                <option value="">
+                                  Seleccione sub-programa...
+                                </option>
+                                {subPoliticas.map((sp) => (
+                                  <option key={sp.id} value={sp.id}>
+                                    {sp.nombre}
+                                  </option>
+                                ))}
+                              </select>
+                              {esAdmin && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="shrink-0 border-blue-200 text-blue-600 h-10 w-10"
+                                  onClick={() => setMostrandoNuevoSub(true)}
+                                >
+                                  <Plus className="w-5 h-5" />
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <div className="flex gap-2 w-full">
+                              <Input
+                                placeholder="Nombre del nuevo sub-programa..."
+                                className="flex-1"
+                                autoFocus
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    await handleCrearSubPolitica(
+                                      e.currentTarget.value,
+                                    );
+                                    setMostrandoNuevoSub(false);
+                                  }
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="shrink-0 text-red-500 h-10 w-10"
+                                onClick={() => setMostrandoNuevoSub(false)}
+                              >
+                                <X className="w-5 h-5" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-emerald-600 uppercase block">
+                      Beneficios Recibidos (Opcional)
+                    </label>
+                    {!mostrandoNuevoBeneficio ? (
+                      <select
+                        value={beneficioSeleccionado ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "otros") {
+                            setMostrandoNuevoBeneficio(true);
+                            setBeneficioSeleccionado(null);
+                            setValue("beneficio_id" as any, null);
+                          } else {
+                            const num = val ? Number(val) : null;
+                            setBeneficioSeleccionado(num);
+                            setValue("beneficio_id" as any, num);
+                          }
+                        }}
+                        className="w-full h-10 px-3 border rounded-md text-sm bg-white"
+                      >
+                        <option value="">Sin beneficio...</option>
+                        {beneficios.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.nombre}
+                          </option>
+                        ))}
+                        <option value="otros">+ Otros (crear nuevo)</option>
+                      </select>
                     ) : (
-                      <div className="flex gap-1 w-full">
+                      <div className="flex gap-2">
                         <Input
-                          {...register("religion_otra")}
-                          placeholder="Religión..."
-                          className="flex-1 px-2"
+                          value={nuevoBeneficioNombre}
+                          onChange={(e) =>
+                            setNuevoBeneficioNombre(e.target.value)
+                          }
+                          placeholder="Nombre del nuevo beneficio..."
+                          className="flex-1"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              const nuevaReligion = form.getValues("religion_otra");
-                              if (nuevaReligion) {
-                                setValue("religion", nuevaReligion);
-                                setMostrandoNuevaReligion(false);
-                              }
+                              handleCrearBeneficio();
                             }
                           }}
                         />
                         <Button
                           type="button"
                           size="icon"
-                          variant="ghost"
-                          className="shrink-0 text-green-600 bg-green-50 hover:bg-green-100 h-10 w-10"
-                          onClick={() => {
-                            const nuevaReligion = form.getValues("religion_otra");
-                            if (nuevaReligion) {
-                              setValue("religion", nuevaReligion);
-                              setMostrandoNuevaReligion(false);
-                            }
-                          }}
+                          disabled={
+                            creandoBeneficio || !nuevoBeneficioNombre.trim()
+                          }
+                          onClick={handleCrearBeneficio}
+                          className="shrink-0 bg-emerald-600 hover:bg-emerald-700 h-10 w-10"
                         >
-                          <Check className="w-4 h-4" />
+                          {creandoBeneficio ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Check className="w-4 h-4" />
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -888,8 +1026,8 @@ export default function AfiliadosForm({
                           variant="ghost"
                           className="shrink-0 text-red-500 bg-red-50 hover:bg-red-100 h-10 w-10"
                           onClick={() => {
-                            setMostrandoNuevaReligion(false);
-                            setValue("religion_otra", "");
+                            setMostrandoNuevoBeneficio(false);
+                            setNuevoBeneficioNombre("");
                           }}
                         >
                           <X className="w-4 h-4" />
@@ -897,7 +1035,44 @@ export default function AfiliadosForm({
                       </div>
                     )}
                   </div>
-                  {errors.religion && !mostrandoNuevaReligion && <p className="text-[10px] text-red-500">{errors.religion.message}</p>}
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-teal-600 uppercase block">
+                      Condición Especial (Opcional)
+                    </label>
+                    <select
+                      {...register("condicion_especial")}
+                      className="w-full h-10 px-3 border rounded-md text-sm bg-white"
+                    >
+                      <option value="">Ninguna</option>
+                      <option value="Discapacidad">Discapacidad</option>
+                      <option value="Desnutrición">Desnutrición</option>
+                      <option value="Adulto mayor">Adulto mayor</option>
+                      <option value="Madre soltera">Madre soltera</option>
+                    </select>
+                  </div>
+
+                  {!isFirstMember && (
+                    <div className="flex items-center justify-between rounded-lg border px-4 py-3 bg-gray-50">
+                      <div>
+                        <p className="text-[10px] font-bold text-purple-600 uppercase">
+                          Familiar
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          Marcar si el afiliado es un familiar
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setValue("familiar", !familiarActual)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${familiarActual ? "bg-purple-500" : "bg-gray-300"}`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${familiarActual ? "translate-x-5" : "translate-x-0"}`}
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -907,59 +1082,24 @@ export default function AfiliadosForm({
                 value={liderPredefinidoId || ""}
               />
 
-              {/* CONDICIÓN ESPECIAL */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-teal-600 uppercase block">
-                  Condición Especial (Opcional)
-                </label>
-                <select
-                  {...register("condicion_especial")}
-                  className="w-full h-10 px-3 border rounded-md text-sm bg-white"
-                >
-                  <option value="">Ninguna</option>
-                  <option value="Discapacidad">Discapacidad</option>
-                  <option value="Desnutrición">Desnutrición</option>
-                  <option value="Adulto mayor">Adulto mayor</option>
-                  <option value="Madre soltera">Madre soltera</option>
-                </select>
-              </div>
-
-              {/* FAMILIAR */}
-              {!isFirstMember && <div className="flex items-center justify-between rounded-lg border px-4 py-3 bg-gray-50">
-                <div>
-                  <p className="text-[10px] font-bold text-rose-600 uppercase">Familiar</p>
-                  <p className="text-[10px] text-gray-400">Marcar si el afiliado es un familiar</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setValue("familiar", !familiarActual)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${
-                    familiarActual ? "bg-rose-500" : "bg-gray-300"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${
-                      familiarActual ? "translate-x-5" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>}
-
               <div className="flex justify-between items-center pt-4 border-t mt-2">
-                {step === 2 && !isEditMode && !isFirstMember && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      setStep(1);
-                      setPadronStatus("none");
-                    }}
-                    className="text-xs font-bold uppercase text-gray-400"
-                  >
-                    Atrás
-                  </Button>
-                )}
-                
+                {step === 2 &&
+                  !isEditMode &&
+                  !isFirstMember &&
+                  padronHabilitado && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setStep(1);
+                        setPadronStatus("none");
+                      }}
+                      className="text-xs font-bold uppercase text-gray-400"
+                    >
+                      Atrás
+                    </Button>
+                  )}
+
                 <div className="flex gap-2 ml-auto">
                   <Button
                     type="button"

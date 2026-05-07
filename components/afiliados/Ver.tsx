@@ -27,6 +27,7 @@ import {
 import { listarUsuariosAction } from "./actions/usuarios";
 import { obtenerAfiliadosAction } from "./actions/afiliados";
 import { obtenerLugaresAction } from "./actions/lugares";
+import { obtenerConfiguracionAction } from "@/components/dashboard/actions/configuracion";
 
 type Lugar = { id: number; nombre: string; sector_id: number | null; sector_nombre: string | null };
 type Tab = "Lideres" | "Afiliados" | "Padron" | "Administrativos";
@@ -69,6 +70,13 @@ export default function Ver() {
     queryFn: () => obtenerAfiliadosAction(),
     enabled: isEstadisticasOpen || activeTab === "Afiliados",
   });
+
+  const { data: configSis } = useQuery({
+    queryKey: ["config_sistema"],
+    queryFn: () => obtenerConfiguracionAction(),
+  });
+
+  const padronHabilitado = configSis?.padron === true;
 
   const fetchData = async () => {
     setLoading(true);
@@ -267,12 +275,14 @@ export default function Ver() {
           </button>
           {(rol === "ADMINISTRADOR" || rol === "SUPER" || rol === "ADMIN") && (
             <>
-              <button
-                onClick={() => setActiveTab("Padron")}
-                className={`px-4 py-2 text-base font-semibold ${activeTab === "Padron" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-500"}`}
-              >
-                📋 Padrón
-              </button>
+              {padronHabilitado && (
+                <button
+                  onClick={() => setActiveTab("Padron")}
+                  className={`px-4 py-2 text-base font-semibold ${activeTab === "Padron" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-500"}`}
+                >
+                  📋 Padrón
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab("Administrativos")}
                 className={`px-4 py-2 text-base font-semibold ${activeTab === "Administrativos" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-500"}`}
