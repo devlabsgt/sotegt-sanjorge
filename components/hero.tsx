@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 
 export default function Hero() {
+  //comentario  
   const router = useRouter();
   const [mostrarBienvenida, setMostrarBienvenida] = useState(false);
 
