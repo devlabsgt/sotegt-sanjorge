@@ -18,6 +18,8 @@ export function useAfiliadosForm() {
       nombres: "",
       apellidos: "",
       telefono: "",
+      telefono2: "",
+      telefono3: "",
       dpi: "",
       nacimiento: "",
       sexo: "M",
@@ -26,7 +28,12 @@ export function useAfiliadosForm() {
       politica_id: 0 as any,
       sub_politica_id: 0 as any,
       no_padron: "",
+      religion: "",
+      religion_otra: "",
       condicion_especial: null,
+      familiar: false,
+      beneficio_id: null,
+      empadronado: false,
     },
   });
 }
@@ -76,6 +83,8 @@ export function useInicializarFormulario(
           nombres: nombresIniciales,
           apellidos: apellidosIniciales,
           telefono: telefonoInicial,
+          telefono2: "",
+          telefono3: "",
           dpi: "",
           lider_id: liderPredefinidoId || null,
           nacimiento: "",
@@ -87,6 +96,9 @@ export function useInicializarFormulario(
           religion: "",
           religion_otra: "",
           condicion_especial: null,
+          familiar: false,
+          beneficio_id: null,
+          empadronado: false,
         });
 
         if (liderPredefinidoId) {

@@ -38,7 +38,7 @@ export const afiliadoSchema = z.object({
   religion: z.string().min(1, "Religión es requerida"),
   religion_otra: z.string().optional(),
   condicion_especial: z.string().optional().nullable(),
-  familiar: z.boolean().optional().default(false),
+  familiar: z.boolean().optional().nullable(),
   beneficio_id: z.number().nullable().optional(),
 });
 
