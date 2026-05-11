@@ -243,7 +243,7 @@ export default function ImageEditorModal({
                       <RotateCw className="w-4 h-4 text-gray-700" />
                     </button>
                     <span className="text-[10px] font-bold w-10 text-center text-gray-600">
-                      {rotation}°
+                      {rotation.toFixed(1)}°
                     </span>
                     <button
                       type="button"
