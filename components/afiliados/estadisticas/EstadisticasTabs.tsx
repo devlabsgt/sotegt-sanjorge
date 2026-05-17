@@ -10,7 +10,6 @@ import EstadisticasReligiones from "./Religion";
 
 const TABS = [
   { id: "edades", label: "Edades", emoji: "👥" },
-  { id: "politicas", label: "Intereses Políticos", emoji: "🏛️" },
   { id: "ubicacion", label: "Ubicación", emoji: "📍" },
   { id: "condicion", label: "Condición", emoji: "🩺" },
   { id: "religion", label: "Religión", emoji: "⛪" },
@@ -50,12 +49,6 @@ export default function EstadisticasTabs({ afiliados }: Props) {
         {activeTab === "edades" && (
           <div className="bg-white border rounded-2xl p-4 md:p-6 shadow-sm h-[500px] flex flex-col w-full">
             <EstadisticasEdades afiliados={afiliados} />
-          </div>
-        )}
-
-        {activeTab === "politicas" && (
-          <div className="bg-white border rounded-2xl p-4 md:p-6 shadow-sm w-full">
-            <EstadisticasPoliticas afiliados={afiliados} />
           </div>
         )}
 
