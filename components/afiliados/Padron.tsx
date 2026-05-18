@@ -2,16 +2,46 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "react-toastify";
 import { obtenerPadronAction } from "./actions/padron";
-import { Search, ChevronLeft, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Loader2,
+  FileSpreadsheet,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { descargarExcelAoA } from "./reportes/descargarExcel";
+
+type PadronFilaExcel = {
+  dpi: string;
+  nombre_completo: string;
+  genero: string;
+};
+
+function normalizaPadronFilaExcel(v: unknown): PadronFilaExcel | null {
+  if (typeof v !== "object" || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const dpi = o.dpi;
+  const nombre = o.nombre_completo;
+  if (typeof dpi !== "string" || typeof nombre !== "string") return null;
+  const generoRaw = o.genero;
+  const genero =
+    typeof generoRaw === "string" ? generoRaw : String(generoRaw ?? "");
+  return { dpi, nombre_completo: nombre, genero };
+}
+
+const CHUNK_PADRON_EXCEL = 2000;
 
 export default function Padron() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -19,6 +49,10 @@ export default function Padron() {
     }, 500);
     return () => clearTimeout(handler);
   }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: ["padron", page, pageSize, debouncedSearch],
@@ -31,20 +65,89 @@ export default function Padron() {
   const totalCount = data?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / pageSize);
 
-  // Reset page to 1 when search changes
-  useState(() => {
-    setPage(1);
-  });
+  const exportarTodoPadronExcel = async (): Promise<void> => {
+    if (totalCount <= 0 || isLoading || isError) return;
+    setExportandoExcel(true);
+    try {
+      const acumuladas: PadronFilaExcel[] = [];
+      let paginaActual = 1;
+      while (acumuladas.length < totalCount) {
+        const resultado = await obtenerPadronAction(
+          paginaActual,
+          CHUNK_PADRON_EXCEL,
+          debouncedSearch,
+        );
+        const dados = resultado.data ?? [];
+        if (!dados.length) break;
+        for (const fila of dados) {
+          const n = normalizaPadronFilaExcel(fila);
+          if (n) acumuladas.push(n);
+        }
+        if (dados.length < CHUNK_PADRON_EXCEL) break;
+        paginaActual += 1;
+        if (paginaActual > Math.ceil(totalCount / CHUNK_PADRON_EXCEL) + 2) break;
+      }
+      if (!acumuladas.length) {
+        toast.error("No hay filas válidas para exportar.");
+        return;
+      }
+      const filas: (string | number)[][] = [
+        ["No.", "DPI", "Nombre Completo", "Género"],
+        ...acumuladas.map((r, idx) => [
+          idx + 1,
+          r.dpi,
+          r.nombre_completo,
+          String(r.genero ?? ""),
+        ]),
+      ];
+      descargarExcelAoA({
+        nombreArchivoBase: debouncedSearch.trim()
+          ? "padron-electoral-busqueda"
+          : "padron-electoral",
+        nombreHoja: "Padrón",
+        filas,
+      });
+      toast.success(`Excel (${acumuladas.length} filas).`);
+    } catch {
+      toast.error("No se pudo generar el Excel.");
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       {/* Search Header */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-bold text-gray-800">Padrón Electoral</h2>
-          <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">
-            {totalCount.toLocaleString()} registros
-          </span>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-800">Padrón Electoral</h2>
+            <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-1 rounded-full">
+              {totalCount.toLocaleString()} registros
+            </span>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              exportandoExcel ||
+              isLoading ||
+              isError ||
+              totalCount === 0
+            }
+            onClick={() => {
+              void exportarTodoPadronExcel();
+            }}
+            className="gap-2 shrink-0 font-bold border-green-200 bg-green-50/70 text-green-900 hover:bg-green-100"
+            aria-label="Descargar padrón en Excel"
+          >
+            {exportandoExcel ? (
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4 shrink-0" />
+            )}
+            Excel
+          </Button>
         </div>
         <div className="relative w-full md:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />

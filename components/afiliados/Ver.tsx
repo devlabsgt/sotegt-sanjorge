@@ -75,6 +75,8 @@ export default function Ver() {
   const userId = dashboard?.session.id ?? "";
   const esAdminOSuper =
     rol === "ADMINISTRADOR" || rol === "SUPER" || rol === "ADMIN";
+  const puedeVerReportesLideres =
+    rol === "ADMIN" || rol === "SUPER";
 
   const { lideres, administrativos, lugares } = useMemo(() => {
     if (!dashboard) {
@@ -159,7 +161,7 @@ export default function Ver() {
     enabled:
       isEstadisticasOpen ||
       activeTab === "Afiliados" ||
-      isReportesLideresOpen,
+      (isReportesLideresOpen && puedeVerReportesLideres),
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     refetchOnMount: false,
@@ -412,17 +414,19 @@ export default function Ver() {
         {activeTab === "Padron" && <Padron />}
         {activeTab === "Administrativos" && (
           <>
-            <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 font-bold text-blue-900 border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-sm md:text-base"
-                onClick={() => setIsReportesLideresOpen(true)}
-              >
-                <FileBarChart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
-                Reportes
-              </Button>
-            </div>
+            {puedeVerReportesLideres && (
+              <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 font-bold text-blue-900 border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-sm md:text-base"
+                  onClick={() => setIsReportesLideresOpen(true)}
+                >
+                  <FileBarChart className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+                  Reportes
+                </Button>
+              </div>
+            )}
             <Lideres
               lideres={administrativos}
               onVerCelula={handleOpenCelulaModal}
@@ -532,7 +536,7 @@ export default function Ver() {
       />
 
       <ReporteLideresClasificacion
-        open={isReportesLideresOpen}
+        open={isReportesLideresOpen && puedeVerReportesLideres}
         onClose={() => setIsReportesLideresOpen(false)}
         lideres={lideres}
         afiliados={afiliados}
